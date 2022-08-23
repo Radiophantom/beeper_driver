@@ -4,7 +4,7 @@
 //#include <linux/init.h>
 #include <linux/fs.h>
 //#include <linux/stat.h>
-//#include <asm/uaccess.h>
+#include <asm/uaccess.h>
 #include <linux/slab.h>
 
 #include <mem.h>
@@ -43,17 +43,26 @@ static int device_release(struct inode *inode, struct file *file) {
 }
 
 static ssize_t device_read(struct file *filp, char *buf, size_t length, loff_t *offset ) {
-  //bytes_amount = 0;
-  //bytes_amount++;
-  //return bytes_amount;
-  return length;
+  char *mem_ptr = mem;
+  int  bytes_read = 0;
+  while(length) {
+    put_user(*(mem_ptr++),buf++);
+    length--;
+    bytes_read++;
+  }
+  return bytes_read;
 }
 
 static ssize_t device_write(struct file *filp, const char *buf, size_t length, loff_t *offset ) {
-  //bytes_amount = 0;
-  //bytes_amount++;
-  //return bytes_amount;
-  return length;
+  char *mem_ptr = mem;
+  char *buf_ptr = buf;
+  int  bytes_written = 0;
+  while(length) {
+    get_user(*buf_ptr++,mem_ptr++);
+    length--;
+    bytes_written++;
+  }
+  return bytes_written;
 }
 
 static int __init init(void) {
