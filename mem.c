@@ -1,16 +1,19 @@
 #include <linux/module.h>
-//#include <linux/moduleparam.h>
 #include <linux/kernel.h>
-//#include <linux/init.h>
 #include <linux/fs.h>
-//#include <linux/stat.h>
 #include <asm/uaccess.h>
 #include <linux/slab.h>
+//#include <linux/moduleparam.h>
+//#include <linux/init.h>
+//#include <linux/stat.h>
 
 #include <mem.h>
 
 static int Major;
 static int Device_is_open = 0;
+
+static char msg [30];
+static char *msg_ptr;
 
 struct file_operations fops = {
   .read    = device_read,
@@ -25,11 +28,8 @@ static int device_open(struct inode *inode, struct file *file) {
   if(Device_is_open)
     return -EBUSY;
   Device_is_open ++;
-  if((mem = kmalloc(1000, GFP_KERNEL)) == NULL){
-    printk(KERN_ALERT "No mem can be allocated by driver!\n");
-    return -ENOMEM;
-  }
-  //printf("Device file opened!\n");
+  //sprintf(mem, "I'm custom mem driver\n");
+  //msg_ptr = msg;
   try_module_get(THIS_MODULE);
   return SUCCESS;
 }
@@ -37,32 +37,25 @@ static int device_open(struct inode *inode, struct file *file) {
 static int device_release(struct inode *inode, struct file *file) {
   Device_is_open--;
   //printf("Device file closed!\n");
-  kfree(mem);
   module_put(THIS_MODULE);
   return SUCCESS;
 }
 
 static ssize_t device_read(struct file *filp, char *buf, size_t length, loff_t *offset ) {
-  char *mem_ptr = mem;
-  int  bytes_read = 0;
-  while(length) {
-    put_user(*(mem_ptr++),buf++);
-    length--;
-    bytes_read++;
-  }
-  return bytes_read;
+  uint8_t tmp_buf [ 1000 ];
+  if(length + *offset > 1000)
+    length = 1000 - *offset;
+  if(copy_to_user(buf,mem+*offset,length))
+    return -EFAULT;
+  return length;
 }
 
 static ssize_t device_write(struct file *filp, const char *buf, size_t length, loff_t *offset ) {
-  char *mem_ptr = mem;
-  char *buf_ptr = buf;
-  int  bytes_written = 0;
-  while(length) {
-    get_user(*buf_ptr++,mem_ptr++);
-    length--;
-    bytes_written++;
-  }
-  return bytes_written;
+  if(length + *offset > 1000)
+    length = 1000 - *offset;
+  if(copy_from_user(mem+*offset,buf,length))
+    return -EFAULT;
+  return length;
 }
 
 static int __init init(void) {
@@ -72,12 +65,19 @@ static int __init init(void) {
     printk(KERN_ALERT "Custom memory driver registering failed!\n");
     return Major;
   }
+  mem = kzalloc(1000, GFP_KERNEL);
+  if(mem == NULL) {
+    printk(KERN_ALERT "No mem can be allocated by driver!\n");
+    return -ENOMEM;
+  }
   printk(KERN_INFO "Custom memory driver registered!\n");
+  printk(KERN_INFO "Major number: %d\n", Major);
   return SUCCESS;
 }
 
 static void __exit deinit(void) {
   unregister_chrdev(Major, DEVICE_NAME);
+  kfree(mem);
   printk(KERN_INFO "Custom memory driver deinitialized!\n");
   return;
 }
