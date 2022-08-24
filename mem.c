@@ -3,26 +3,63 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 #include <linux/slab.h>
+#include <linux/platform_device.h>
 //#include <linux/moduleparam.h>
 //#include <linux/init.h>
 //#include <linux/stat.h>
 
 #include <mem.h>
 
-static int Major;
-static int Device_is_open = 0;
+static int beeper_probe (struct platform_device *pdev);
+static int beeper_remove(struct platfrom_device *pdev);
 
-static char msg [30];
-static char *msg_ptr;
+static int ssize_t beeper_read (struct file *file, char *buf,       size_t len, loff_t *offset);
+static int ssize_t beeper_write(struct file *file, const char *buf, size_t len, loff_t *offset);
 
-struct file_operations fops = {
-  .read    = device_read,
-  .write   = device_write,
-  .open    = device_open,
-  .release = device_release
+struct beeper_dev {
+	struct miscdevice miscdev;
+	void __iomem *regs;
+	u8 leds_value;
 };
 
-static char *mem;
+static struct of_device_id beeper_dt_ids[] = {
+	{
+		.compatible = "dev,beeper"
+	},
+	{ /* end of table */ }
+};
+
+MODULE_DEVICE_TABLE(of, beeper_dt_ids);
+
+static struct platform_driver beeper_platform = {
+	.probe  = beeper_probe,
+	.remove = beeper_remove,
+	.driver = {
+		.name "Custom BEEPER Driver",
+		.owner = THIS_MODULE,
+		.of_match_table = beeper_dt_ids
+	}
+};
+
+static int __init beeper_init(void) {
+	ret = platform_driver_register(&beeper_platform);
+}
+
+static void __exit beeper_cleanup(void) {
+	platform_driver_unregister(&beeper_platform);
+}
+
+module_init(beeper_init);
+module_exit(beeper_cleanup);
+
+static const struct file_operations beeper_fops = {
+	.owner = THIS_MODULE,
+	.read  = beeper_read,
+	.write = beeper_write
+};
+
+static int Major;
+static int Device_is_open = 0;
 
 static int device_open(struct inode *inode, struct file *file) {
   if(Device_is_open)
@@ -81,9 +118,6 @@ static void __exit deinit(void) {
   printk(KERN_INFO "Custom memory driver deinitialized!\n");
   return;
 }
-
-module_init(init);
-module_exit(deinit);
 
 MODULE_AUTHOR(AUTHOR);
 MODULE_LICENSE(LICENSE);
