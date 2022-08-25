@@ -40,6 +40,8 @@ static int Device_is_open = 0;
 static char *mem;
 static char *mem_ptr;
 
+static struct class *mychardev_class = NULL;
+
 static int platform_probe( struct platform_device *pdev ) {
   pr_info("platform_probe enter\n");
   Major = register_chrdev(0, DEVICE_NAME, &fops);
@@ -54,12 +56,16 @@ static int platform_probe( struct platform_device *pdev ) {
   }
   cdev_init(&my_dev.cdev, &fops);
   cdev_add(&my_dev.cdev, MKDEV(Major,0), 1);
+  mychardev_class = class_create(THIS_MODULE,"mychardev");
+  device_create(mychardev_class, NULL, MKDEV(Major,0), NULL, "mychardev-0");
   pr_info("platform_probe exit\n");
   return 0;
 }
 
 static int platform_remove( struct platform_device *pdev ) {
   pr_info("platform_remove enter\n");
+  device_destroy(mychardev_class, MKDEV(Major,0));
+  class_destroy(mychardev_class);
   cdev_del(&my_dev.cdev);
   unregister_chrdev(Major, DEVICE_NAME);
   kfree(mem);
@@ -85,6 +91,21 @@ static struct platform_driver beeper_platform_driver = {
 		  .of_match_table = beeper_driver_dt_ids
 	          },
 };
+
+struct my_device_platform_data {
+	int reset_gpio;
+};
+
+static struct my_device_platform_data my_device_pdata = {
+	.reset_gpio = 101
+};
+
+static struct platform_device *my_device;
+//= {
+//	.name = "Custom BEEPER Driver",
+//	.id   = PLATFORM_DEVID_NONE,
+//	.dev.platform_data = &my_device_pdata
+//};
 
 static int beeper_open(struct inode *inode, struct file *file) {
   struct my_device_data *my_data;
@@ -125,21 +146,26 @@ static ssize_t beeper_write(struct file *filp, const char *buf, size_t length, l
 static int beeper_init(void) {
   int ret_val;
   pr_info("beeper_init enter\n");
-
+  my_device = platform_device_alloc("Custom BEEPER Driver",0);
+  platform_device_add(my_device);
+  //platform_device_register(&my_device);
+  pr_info("platform device registered!\n");
   ret_val = platform_driver_register(&beeper_platform_driver);
   if(ret_val != 0) {
     pr_err("platfrom_driver_register returned %d\n", ret_val);
     return ret_val;
   }
+  pr_info("platfrom driver registered\n");
   pr_info("beeper_init exit\n");
   return 0;
 }
 
 static void beeper_cleanup(void) {
   pr_info("beeper_cleanup enter\n");
-
+  platform_device_unregister(my_device);
+  pr_info("platform device unregistered\n");
   platform_driver_unregister(&beeper_platform_driver);
-
+  pr_info("platform driver unregistered\n");
   pr_info("beeper_cleanup exit\n");
 }
 
