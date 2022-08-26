@@ -23,15 +23,17 @@ struct my_device_data my_dev;
 static int     beeper_open   (struct inode *inode, struct file *file);
 static int     beeper_release(struct inode *inode, struct file *file);
 
-static ssize_t beeper_read (struct file *file, char *buf,       size_t len, loff_t *offset);
-static ssize_t beeper_write(struct file *file, const char *buf, size_t len, loff_t *offset);
+static ssize_t beeper_read  (struct file *file, char *buf,       size_t len, loff_t *offset);
+static ssize_t beeper_write (struct file *file, const char *buf, size_t len, loff_t *offset);
+static loff_t  beeper_llseek(struct file *file, loff_t offset,   int whence                );
 
 static const struct file_operations fops = {
 	.owner    = THIS_MODULE,
         .open     = beeper_open,
         .release  = beeper_release,
 	.read     = beeper_read,
-	.write    = beeper_write
+	.write    = beeper_write,
+        .llseek   = beeper_llseek
 };
 
 static int Major;
@@ -143,6 +145,26 @@ static ssize_t beeper_write(struct file *filp, const char *buf, size_t length, l
     return -EFAULT;
   return length;
 }
+
+static loff_t  beeper_llseek(struct file *file, loff_t offset, int whence) {
+  loff_t new_offset;
+  switch(whence) {
+    case SEEK_SET:
+      new_offset = offset;
+      break;
+    case SEEK_CUR:
+      new_offset = file->f_pos + offset;
+      break;
+    //case SEEK_END:
+      //new_offset = FILE_SIZE + offset;
+      //break;
+    default:
+      return -EINVAL;
+  }
+  file->f_pos = new_offset;
+  return new_offset;
+}
+
 static int beeper_init(void) {
   int ret_val;
   pr_info("beeper_init enter\n");
