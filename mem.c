@@ -44,6 +44,11 @@ static char *mem_ptr;
 
 static struct class *mychardev_class = NULL;
 
+static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env) {
+	add_uevent_var(env, "DEVMODE=%#o", 0666);
+	return 0;
+}
+
 static int platform_probe( struct platform_device *pdev ) {
   pr_info("platform_probe enter\n");
   Major = register_chrdev(0, DEVICE_NAME, &fops);
@@ -59,6 +64,7 @@ static int platform_probe( struct platform_device *pdev ) {
   cdev_init(&my_dev.cdev, &fops);
   cdev_add(&my_dev.cdev, MKDEV(Major,0), 1);
   mychardev_class = class_create(THIS_MODULE,"mychardev");
+  mychardev_class->dev_uevent = mychardev_uevent;
   device_create(mychardev_class, NULL, MKDEV(Major,0), NULL, "mychardev-0");
   pr_info("platform_probe exit\n");
   return 0;
@@ -135,6 +141,7 @@ static ssize_t beeper_read(struct file *filp, char *buf, size_t length, loff_t *
     length = 1000 - *offset;
   if(copy_to_user(buf,mem+*offset,length))
     return -EFAULT;
+  *offset += length;
   return length;
 }
 
@@ -143,6 +150,7 @@ static ssize_t beeper_write(struct file *filp, const char *buf, size_t length, l
     length = 1000 - *offset;
   if(copy_from_user(mem+*offset,buf,length))
     return -EFAULT;
+  *offset += length;
   return length;
 }
 
