@@ -5,12 +5,16 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <asm/uaccess.h>
+#include <asm/io.h>
+#include <linux/mm.h>
 //#include <linux/kernel.h>
 //#include <linux/moduleparam.h>
 //#include <linux/init.h>
 //#include <linux/stat.h>
 
 #include <mem.h>
+
+#define MM_SIZE 4096
 
 struct my_device_data {
 	struct cdev cdev;
@@ -26,6 +30,7 @@ static int     beeper_release(struct inode *inode, struct file *file);
 static ssize_t beeper_read  (struct file *file, char *buf,       size_t len, loff_t *offset);
 static ssize_t beeper_write (struct file *file, const char *buf, size_t len, loff_t *offset);
 static loff_t  beeper_llseek(struct file *file, loff_t offset,   int whence                );
+static int     beeper_mmap  (struct file *file, struct vm_area_struct *vma                 );
 
 static const struct file_operations fops = {
 	.owner    = THIS_MODULE,
@@ -33,7 +38,8 @@ static const struct file_operations fops = {
         .release  = beeper_release,
 	.read     = beeper_read,
 	.write    = beeper_write,
-        .llseek   = beeper_llseek
+        .llseek   = beeper_llseek,
+        .mmap     = beeper_mmap
 };
 
 static int Major;
@@ -56,7 +62,7 @@ static int platform_probe( struct platform_device *pdev ) {
     printk(KERN_ALERT "Custom memory driver registering failed!\n");
     return Major;
   }
-  mem = kzalloc(1000, GFP_KERNEL);
+  mem = kzalloc(MM_SIZE, GFP_KERNEL);
   if(mem == NULL) {
     printk(KERN_ALERT "No mem can be allocated by driver!\n");
     return -ENOMEM;
@@ -171,6 +177,14 @@ static loff_t  beeper_llseek(struct file *file, loff_t offset, int whence) {
   }
   file->f_pos = new_offset;
   return new_offset;
+}
+
+static int beeper_mmap(struct file *file, struct vm_area_struct *vma) {
+  vma->vm_flags |= ( VM_IO | VM_DONTDUMP | VM_DONTEXPAND );
+  vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+  if(remap_pfn_range(vma,vma->vm_start,virt_to_phys(mem)>>PAGE_SHIFT,vma->vm_end - vma->vm_start, vma->vm_page_prot))
+    return -EAGAIN;
+  return 0;
 }
 
 static int beeper_init(void) {
