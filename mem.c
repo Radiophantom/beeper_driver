@@ -53,7 +53,7 @@ static struct device *mychardev_dev;
 
 static struct class *mychardev_class = NULL;
 
-uint8_t sysfs_val;
+uint8_t sysfs_val = 41;
 
 static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env) {
 	add_uevent_var(env, "DEVMODE=%#o", 0666);
@@ -61,24 +61,27 @@ static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env) {
 }
 
 static ssize_t show_value(struct device *dev, struct device_attribute *attr, char *buf) {
-  copy_to_user(buf,&sysfs_val,1);
-  return 0;
+  *buf = sysfs_val;
+  //if(copy_to_user(buf,&sysfs_val,1))
+  //  return -EFAULT;
+  return 1;
 }
 
 static ssize_t set_value(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
-  //copy_from_user(&sysfs_val,buf,count);
-  copy_from_user(&sysfs_val,buf,1);
-  return 0;
+  sysfs_val = *buf;
+  //if(copy_from_user(&sysfs_val,buf,count))
+//	  return -EFAULT;
+  return count;
 }
 
 static ssize_t reset_value(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
-  copy_from_user(&sysfs_val,"\0",1);
-  return 0;
+  sysfs_val = 0;
+  return count;
 }
 
-static DEVICE_ATTR(show,  S_IWUSR | S_IRUSR, show_value, NULL );
-static DEVICE_ATTR(set,   S_IWUSR | S_IRUSR, NULL, set_value  );
-static DEVICE_ATTR(reset, S_IWUSR | S_IRUSR, NULL, reset_value);
+static DEVICE_ATTR(show,  S_IRUSR, show_value, NULL );
+static DEVICE_ATTR(set,   S_IWUSR, NULL, set_value  );
+static DEVICE_ATTR(reset, S_IWUSR, NULL, reset_value);
 
 static int platform_probe( struct platform_device *pdev ) {
   pr_info("platform_probe enter\n");
@@ -107,6 +110,9 @@ static int platform_probe( struct platform_device *pdev ) {
 
 static int platform_remove( struct platform_device *pdev ) {
   pr_info("platform_remove enter\n");
+  device_remove_file(mychardev_dev, &dev_attr_show);
+  device_remove_file(mychardev_dev, &dev_attr_set);
+  device_remove_file(mychardev_dev, &dev_attr_reset);
   device_destroy(mychardev_class, MKDEV(Major,0));
   class_unregister(mychardev_class);
   class_destroy(mychardev_class);
