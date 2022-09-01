@@ -33,6 +33,9 @@ static ssize_t beeper_write (struct file *file, const char *buf, size_t len, lof
 static loff_t  beeper_llseek(struct file *file, loff_t offset,   int whence                );
 static int     beeper_mmap  (struct file *file, struct vm_area_struct *vma                 );
 
+static int platform_probe ( struct platform_device *pdev );
+static int platform_remove( struct platform_device *pdev );
+
 static const struct file_operations fops = {
 	.owner    = THIS_MODULE,
         .open     = beeper_open,
@@ -62,15 +65,11 @@ static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env) {
 
 static ssize_t show_value(struct device *dev, struct device_attribute *attr, char *buf) {
   *buf = sysfs_val;
-  //if(copy_to_user(buf,&sysfs_val,1))
-  //  return -EFAULT;
   return 1;
 }
 
 static ssize_t set_value(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
   sysfs_val = *buf;
-  //if(copy_from_user(&sysfs_val,buf,count))
-//	  return -EFAULT;
   return count;
 }
 
@@ -82,46 +81,6 @@ static ssize_t reset_value(struct device *dev, struct device_attribute *attr, co
 static DEVICE_ATTR(show,  S_IRUSR, show_value, NULL );
 static DEVICE_ATTR(set,   S_IWUSR, NULL, set_value  );
 static DEVICE_ATTR(reset, S_IWUSR, NULL, reset_value);
-
-static int platform_probe( struct platform_device *pdev ) {
-  pr_info("platform_probe enter\n");
-  Major = register_chrdev(0, DEVICE_NAME, &fops);
-  if(Major < 0) {
-    printk(KERN_ALERT "Custom memory driver registering failed!\n");
-    return Major;
-  }
-  mem = kzalloc(MM_SIZE, GFP_KERNEL);
-  if(mem == NULL) {
-    printk(KERN_ALERT "No mem can be allocated by driver!\n");
-    return -ENOMEM;
-  }
-  cdev_init(&my_dev.cdev, &fops);
-  cdev_add(&my_dev.cdev, MKDEV(Major,0), 1);
-  mychardev_class = class_create(THIS_MODULE,"mychardev");
-  mychardev_class->dev_uevent = mychardev_uevent;
-  mychardev_dev = device_create(mychardev_class, NULL, MKDEV(Major,0), NULL, "mychardev-0");
-  device_create_file(mychardev_dev, &dev_attr_show);
-  device_create_file(mychardev_dev, &dev_attr_set);
-  device_create_file(mychardev_dev, &dev_attr_reset);
-
-  pr_info("platform_probe exit\n");
-  return 0;
-}
-
-static int platform_remove( struct platform_device *pdev ) {
-  pr_info("platform_remove enter\n");
-  device_remove_file(mychardev_dev, &dev_attr_show);
-  device_remove_file(mychardev_dev, &dev_attr_set);
-  device_remove_file(mychardev_dev, &dev_attr_reset);
-  device_destroy(mychardev_class, MKDEV(Major,0));
-  class_unregister(mychardev_class);
-  class_destroy(mychardev_class);
-  cdev_del(&my_dev.cdev);
-  unregister_chrdev(Major, DEVICE_NAME);
-  kfree(mem);
-  pr_info("platform_remove exit\n");
-  return 0;
-}
 
 static struct of_device_id beeper_driver_dt_ids[] = {
   {
@@ -144,18 +103,58 @@ static struct platform_driver beeper_platform_driver = {
 
 struct my_device_platform_data {
 	int reset_gpio;
+	int reg;
 };
 
 static struct my_device_platform_data my_device_pdata = {
-	.reset_gpio = 101
+	.reset_gpio = 101,
+	.reg        = 0x00CC0000
 };
 
 static struct platform_device *my_device;
-//= {
-//	.name = "Custom BEEPER Driver",
-//	.id   = PLATFORM_DEVID_NONE,
-//	.dev.platform_data = &my_device_pdata
-//};
+
+static int platform_probe( struct platform_device *pdev ) {
+  struct my_device_platform_data *my_device_pdata;
+  pr_info("platform_probe enter\n");
+  Major = register_chrdev(0, DEVICE_NAME, &fops);
+  if(Major < 0) {
+    printk(KERN_ALERT "Custom memory driver registering failed!\n");
+    return Major;
+  }
+  mem = kzalloc(MM_SIZE, GFP_KERNEL);
+  if(mem == NULL) {
+    printk(KERN_ALERT "No mem can be allocated by driver!\n");
+    return -ENOMEM;
+  }
+  cdev_init(&my_dev.cdev, &fops);
+  cdev_add(&my_dev.cdev, MKDEV(Major,0), 1);
+  mychardev_class = class_create(THIS_MODULE,"mychardev");
+  mychardev_class->dev_uevent = mychardev_uevent;
+  mychardev_dev = device_create(mychardev_class, NULL, MKDEV(Major,0), NULL, "mychardev-0");
+  device_create_file(mychardev_dev, &dev_attr_show);
+  device_create_file(mychardev_dev, &dev_attr_set);
+  device_create_file(mychardev_dev, &dev_attr_reset);
+
+  my_device_pdata = pdev -> dev.platform_data;
+  pr_info("reset_gpio: %d. reg: %d\n", my_device_pdata->reset_gpio, my_device_pdata->reg);
+  pr_info("platform_probe exit\n");
+  return 0;
+}
+
+static int platform_remove( struct platform_device *pdev ) {
+  pr_info("platform_remove enter\n");
+  device_remove_file(mychardev_dev, &dev_attr_show);
+  device_remove_file(mychardev_dev, &dev_attr_set);
+  device_remove_file(mychardev_dev, &dev_attr_reset);
+  device_destroy(mychardev_class, MKDEV(Major,0));
+  class_unregister(mychardev_class);
+  class_destroy(mychardev_class);
+  cdev_del(&my_dev.cdev);
+  unregister_chrdev(Major, DEVICE_NAME);
+  kfree(mem);
+  pr_info("platform_remove exit\n");
+  return 0;
+}
 
 static int beeper_open(struct inode *inode, struct file *file) {
   struct my_device_data *my_data;
@@ -227,8 +226,8 @@ static int beeper_init(void) {
   int ret_val;
   pr_info("beeper_init enter\n");
   my_device = platform_device_alloc("Custom BEEPER Driver",0);
+  platform_device_add_data(my_device, &my_device_pdata, sizeof(my_device_pdata));
   platform_device_add(my_device);
-  //platform_device_register(&my_device);
   pr_info("platform device registered!\n");
   ret_val = platform_driver_register(&beeper_platform_driver);
   if(ret_val != 0) {
@@ -242,6 +241,7 @@ static int beeper_init(void) {
 
 static void beeper_cleanup(void) {
   pr_info("beeper_cleanup enter\n");
+  kfree(my_device->dev.platform_data);
   platform_device_unregister(my_device);
   pr_info("platform device unregistered\n");
   platform_driver_unregister(&beeper_platform_driver);
