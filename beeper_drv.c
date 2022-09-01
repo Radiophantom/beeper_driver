@@ -13,7 +13,7 @@
 #include <linux/init.h>
 //#include <linux/stat.h>
 
-#include <mem.h>
+#include <beeper_drv.h>
 
 #define MM_SIZE 4096
 

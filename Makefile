@@ -1,4 +1,4 @@
-obj-m += mem.o
+obj-m += beeper_drv.o
 EXTRA_CFLAGS := -I$(src)
 
 all:
